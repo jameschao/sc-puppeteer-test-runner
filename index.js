@@ -523,6 +523,28 @@ function configureTestPage(page, test) {
 }
 
 /**
+ * Helper function that creates a new page and for it to go to the provided URL.
+ *
+ * @param {*} browser Puppeteer browser object
+ * @param {String} url url for the new page to go to
+ * @param {Function} setupPage optional function for setting up the page
+ */
+function goToPage(browser, url, setupPage = () => {}) {
+    return new Promise((resolve, reject) => {
+        browser.newPage().then(page => {
+            page.on('error', () => {
+                reject(new Error(`Error for page: ${url}`));
+            });
+
+            // call the setup callback
+            setupPage(page, resolve, reject);
+
+            page.goto(url).catch(reject);
+        });
+    });
+}
+
+/**
  Start running a single unit test.
 
  Returns a promise which will be resolved when the unit test completes.
@@ -533,33 +555,23 @@ function configureTestPage(page, test) {
  @returns {Promise} Promise which will resolve upon test completion
 */
 function runTest(browser, test) {
-    // console.log('run test', test);
-    return new Promise((resolve, reject) => {
-        // Check if we should run this test.
-        if (filterTest(test)) {
-            browser.newPage().then(page => {
-                const url = urlRoot + test.url;
-                configureTestPage(page, test)
-                    .then(resolve)
-                    .catch(reject);
-
-                page.on('error', () => {
-                    page.close();
-                    reject(new Error(`Could not open page: ${url}`));
-                });
-
-                page.goto(url).catch(reject);
-            });
-        } else {
-            // Resolve as a skipped test.
-            const results = {
-                isSkipped: true,
-                test,
-            };
-            logTestResult(results, test);
-            resolve(results);
-        }
-    });
+    // Check if we should run this test.
+    if (filterTest(test)) {
+        const url = urlRoot + test.url;
+        return goToPage(browser, url, (page, resolve, reject) => {
+            configureTestPage(page, test)
+                .then(resolve)
+                .catch(reject);
+        });
+    } else {
+        // Resolve as a skipped test.
+        const results = {
+            isSkipped: true,
+            test,
+        };
+        logTestResult(results, test);
+        Promise.resolve(results);
+    }
 }
 
 /**
@@ -611,31 +623,26 @@ function runTests(browser, tests) {
                       list of test for the target
 */
 function fetchTestsForTarget(browser, target) {
-    // console.log('fetchTestsForTarget', target);
     const url = urlRoot + target.link_tests;
 
-    return new Promise((resolve, reject) => {
-        browser.newPage().then(page => {
-            page.on('load', () => {
-                const evalResults = page.evaluate(() => {
-                    return JSON.parse(document.getElementsByTagName('pre')[0].innerHTML);
-                });
-
-                evalResults
-                    .then(tests => {
-                        if (tests) {
-                            resolve(tests);
-                            page.close();
-                        } else {
-                            reject(new Error('Could not find tests'));
-                        }
-                    })
-                    .catch(error => {
-                        reject(error);
-                    });
+    return goToPage(browser, url, (page, resolve, reject) => {
+        page.on('load', () => {
+            const evalResults = page.evaluate(() => {
+                return JSON.parse(document.getElementsByTagName('pre')[0].innerHTML);
             });
 
-            page.goto(url).catch(reject);
+            evalResults
+                .then(tests => {
+                    if (tests) {
+                        resolve(tests);
+                        page.close();
+                    } else {
+                        reject(new Error('Could not find tests'));
+                    }
+                })
+                .catch(error => {
+                    reject(error);
+                });
         });
     });
 }
@@ -651,8 +658,6 @@ function fetchTestsForTarget(browser, target) {
                       all targets have been fetched
 */
 function fetchTests(browser, targets) {
-    // console.log('fetch tests');
-
     // Reduce the targets down to a single promise.
     return targets.reduce((p, target) => {
         // Check if we should handle this target.
@@ -683,38 +688,24 @@ function fetchTests(browser, targets) {
  @returns {Promise} Promise which will resolve when we get the list of targets
 */
 function fetchTargets(browser) {
-    // console.log('fetch targets');
-
     const url = `${urlRoot}/sc/targets.json`;
-    return new Promise((resolve, reject) => {
-        browser.newPage().then(page => {
-            page.on('error', () => {
-                reject(new Error(`Error for page: ${url}`));
-            });
 
-            page.on('console', msg => {
-                console.log('on---', msg);
-                for (let i = 0; i < msg.args().length; ++i) console.log(`${i}: ${msg.args()[i]}`);
-            });
-
-            page.on('load', () => {
-                page.evaluate(() => {
-                    return JSON.parse(document.getElementsByTagName('pre')[0].innerHTML);
-                })
-                  .then(targets => {
-                      if (targets) {
-                          page.close();
-                          resolve(targets);
-                      } else {
-                          reject(new Error('Could not find targets'));
-                      }
-                  })
-                  .catch(error => {
-                      reject(error);
-                  });
-            });
-
-            page.goto(url).catch(reject);
+    return goToPage(browser, url, (page, resolve, reject) => {
+        page.on('load', () => {
+            page.evaluate(() => {
+                return JSON.parse(document.getElementsByTagName('pre')[0].innerHTML);
+            })
+              .then(targets => {
+                  if (targets) {
+                      page.close();
+                      resolve(targets);
+                  } else {
+                      reject(new Error('Could not find targets'));
+                  }
+              })
+              .catch(error => {
+                  reject(error);
+              });
         });
     });
 }
@@ -732,8 +723,6 @@ function fetchTargets(browser) {
 */
 async function run() {
     const browser = await puppeteer.launch();
-
-    // browser.on('disconnected', () => console.log('disonnected'));
 
     const targets = await fetchTargets(browser);
     const tests = await fetchTests(browser, targets);
