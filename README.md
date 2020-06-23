@@ -2,7 +2,7 @@
 
 This is a CLI test runner for [SproutCore](https://github.com/sproutcore/sproutcore) based on [Puppeteer](https://github.com/puppeteer/puppeteer).
 
-This is meant to replace the existing [PhantomJS](https://phantomjs.org/)-based CLI [test runner](https://github.com/sproutcore/sproutcore/tree/master/phantomjs) and has the exact parameters and output.
+This is meant to replace the existing [PhantomJS](https://phantomjs.org/)-based CLI [test runner](https://github.com/sproutcore/sproutcore/tree/master/phantomjs) and has the exact same parameters and output (for now).
 
 ## Command Line Options
 ```
